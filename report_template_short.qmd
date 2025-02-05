@@ -1,0 +1,210 @@
+---
+title: "Handcycling Report"
+format: 
+  html:
+    theme: cosmo
+    toc: true
+    toc-title: Inhaltsverzeichnis
+    toc-location: left
+embed-resources: true
+css: "template/styles.css"
+title-block-banner: "#ffffff"
+params:
+  id: 2
+execute: 
+  echo: false
+knitr:
+  opts_chunk: 
+    R.options:
+      knitr.kable.NA: ''
+---
+
+```{=html}
+<!-- html for bootstrap tooltip -->
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.4/jquery.min.js"></script>
+
+<script>
+$(document).ready(function(){
+    $('[data-toggle="tooltip"]').tooltip(); 
+});
+</script>
+```
+
+
+```{r}
+#| label: setup
+#| warning: false
+# load packages
+library(spiro)
+library(ggplot2)
+library(purrr)
+library(dplyr)
+library(tidyr)
+library(patchwork)
+library(kableExtra)
+library(targets)
+
+# source functions
+source("R/helpers.R")
+par <- params
+id <- par$id
+
+# load data
+p_temp <- list(
+  ramp = tar_read(ramp_params, id)[[1]], 
+  gext = tar_read(gext_params, id)[[1]], 
+  s1 = tar_read(s1_params, id)[[1]],
+  s1_pow = tar_read(s1_pow_results, id)[[1]],
+  s2_pow = tar_read(s2_pow_results, id)[[1]],
+  id = tar_read(id)[[1]]
+)
+
+# convert complex parameters back to data.frames
+ramp <- conv_data(p_temp$ramp)
+gext <- conv_data(p_temp$gext)
+s1 <- conv_data(p_temp$s1, has_resp = FALSE)
+s1_pow <- conv_data(p_temp$s1_pow, has_resp = FALSE)
+s2_pow <- conv_data(p_temp$s2_pow, has_resp = FALSE)
+s2 <- conv_data(p_temp$s2, has_resp = FALSE)
+
+```
+
+```{r}
+#| label: calc-max
+# calc VO2max
+smax <- spiro_max(ramp$resp, "fz")
+```
+
+::: {.callout-note title="Hinweis"}
+Da die Berechnungsmethoden der einzelnen Parameter noch nicht alle hundertprozentig festgelegt sind, kann es im Rahmen der finalen Auswertung noch zu geringfügigen Änderungen der hier angegebenen Ergebnisse kommen.
+:::
+
+## Stufentest
+
+```{r}
+#| label: gext-params
+#| message: false
+#| warning: false
+p4 <- calc4(gext$la)
+s <- spiro_summary(gext$resp, exclude = TRUE)
+s <- s[-nrow(s),]
+
+add <- calc4_add(s, p4)
+
+data.frame(
+  p4 = p4,
+  hr4 = add$hr4,
+  vo24 = add$vo24,
+  vo24rel = add$vo24rel,
+  vo2_per = add$vo24 / smax$VO2
+) |>
+  tooltip_names(
+    c("Leistung bei 4mmol/l Laktat", "Herzfrequenz bei 4mmol/l Laktat", "absolute Sauerstoffaufnahme bei 4mmol/l Laktat", "absolute Sauerstoffaufnahme bei 4mmol/l Laktat", "prozentuale Ausschöpfung der VO2max bei 4 mmol/l Laktat"),
+    cols = c("P<sub>4</sub>", "HF<sub>4</sub>", "VO2abs<sub>4</sub>", "VO2rel<sub>4</sub>", "VO2per<sub>4</sub>")) |>
+  kbl(digits = c(0,0,0,1,3), escape = FALSE)
+
+```
+
+::: {.panel-tabset}
+
+## Laktatkurve
+
+```{r}
+#| label: gext-plot
+#| warning: false
+#| fig-align: center
+#| fig-width: 7
+#| fig-height: 5
+s$La <- c(as.numeric(gext$la[,2:max(which(!is.na(gext$la)))]))
+ggplot(s, aes(x = load, y = La)) +
+  geom_point(colour = "darkred", size = 2) +
+  geom_line(colour = "darkred") +
+  labs(
+    x = "Leistung (W)",
+    y = "Laktatkonzentration (mmol/l)"
+  ) +
+  scale_x_continuous() +
+  theme_bw()
+```
+
+## Tabelle
+
+```{r}
+#| label: gext-table
+#| message: false
+
+s[,c("load", "duration", "La", "HR", "VO2", "VO2_rel", "VE", "RER", "CHO", "FO")] |>
+  tooltip_names(c(NA, NA, "Laktat", "Herzfrequenz", "Sauerstoffaufnahme (abs.)", "Sauerstoffaufnahme (rel.)", "Atemminutenvolumen", "Respiratorischer Quotient", "Kohlenhydratverbrauch", "Fettverbrauch"), cols = c("Leistung", "Dauer", NA, NA, "VO2abs", "VO2rel", rep.int(NA, 4))) |>
+  kbl(digits = 2, escape = FALSE) |>
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+:::
+
+<!-- ### Drehmoment -->
+
+<!-- ```{r} -->
+<!-- #| label: gext-power -->
+<!-- #| message: false -->
+<!-- #| fig-align: center -->
+<!-- #| fig-width: 9 -->
+<!-- #| fig-height: 7 -->
+<!-- #| fig-dpi: 300 -->
+
+<!-- knitr::include_graphics(paste0("plots/pow_polar/", id, "-gext.png")) -->
+<!-- ``` -->
+
+## Rampentest
+
+```{r}
+#| label: ramp-table
+smax |>
+  tooltip_names(
+    c("maximale absolute Sauerstoffaufnahme", "maximale Kohlenstoffdioxidabgabe","maximale Ventilation", "maximale relative Sauerstoffaufnahme", "maximaler respiratorischer Quotient", "maximale Herzfrequenz"),
+    cols = c("VO2<sub>max</sub>abs","VCO2<sub>max</sub>","VE<sub>max</sub>","VO2<sub>max</sub>rel", "RER<sub>max</sub>", "HF<sub>max</sub>")
+  ) |>
+  kbl(escape = FALSE, digits = c(0,0,1,2,2,0)) |>
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+```{r}
+#| label: ramp-plot
+#| fig-align: center
+#| fig-width: 7
+#| fig-height: 5
+spiro_plot(ramp$resp, 3)
+```
+
+<!-- ## Sprinttest -->
+
+<!-- ```{r} -->
+<!-- #| label: clamax-plot -->
+<!-- #| fig-align: center -->
+<!-- #| fig-width: 6.5 -->
+<!-- #| fig-height: 4 -->
+<!-- #| warning: false -->
+<!-- la_long <- pivot_longer(s1$la, cols = -id) -->
+<!-- la_long$name <- factor((la_long$name), levels = unique(la_long$name)) -->
+<!-- ggplot(la_long, aes(name, value)) + -->
+<!--   geom_point(color = "darkred", size = 2) + -->
+<!--   scale_y_continuous(name = "Laktatkonzentration (mmol/l)", limits = c(0, NA)) + -->
+<!--   scale_x_discrete(name = "Zeit (min)") + -->
+<!--   theme_bw() -->
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- #| label: spr-table -->
+<!-- clamax <- (max(s1$la, na.rm = TRUE) - s1$la$R) / (15 - 3.409) -->
+<!-- data.frame( -->
+<!--   clamax = round(clamax,2), -->
+<!--   pmax1 = s1_pow$max, -->
+<!--   pmax2 = s2_pow$max -->
+<!-- ) |> -->
+<!--   tooltip_names( -->
+<!--     c("maximale Laktatakkumulationsrate", "maximale Leistung (Sprint 1)", "maximale Leistung (Sprint 2)"), -->
+<!--     cols = c("cLa<sub>max</sub>", "P<sub>max1</sub>", "P<sub>max2</sub>") -->
+<!--   ) |> -->
+<!--   kbl(escape = FALSE) |> -->
+<!--   kable_styling(bootstrap_options = c("striped", "hover")) -->
+
+<!-- ``` -->

@@ -1,0 +1,415 @@
+---
+title: "Handcycling Report"
+format: 
+  html:
+    theme: cosmo
+    toc: true
+    toc-title: Inhaltsverzeichnis
+    toc-location: left
+embed-resources: true
+css: "template/styles.css"
+title-block-banner: "#ffffff"
+params:
+  id: 1
+execute: 
+  echo: false
+knitr:
+  opts_chunk: 
+    R.options:
+      knitr.kable.NA: ''
+---
+
+```{=html}
+<!-- html for bootstrap tooltip -->
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.4/jquery.min.js"></script>
+
+<script>
+$(document).ready(function(){
+    $('[data-toggle="tooltip"]').tooltip(); 
+});
+</script>
+```
+
+
+```{r}
+#| label: setup
+#| warning: false
+# load packages
+library(spiro)
+library(ggplot2)
+library(purrr)
+library(dplyr)
+library(tidyr)
+library(patchwork)
+library(kableExtra)
+library(targets)
+
+# source functions
+source("R/helpers.R")
+par <- params
+id <- par$id
+
+# load data
+p_temp <- list(
+  ramp = tar_read(ramp_params, id)[[1]], 
+  gext = tar_read(gext_params, id)[[1]], 
+  s1 = tar_read(s1_params, id)[[1]],
+  s1_pow = tar_read(s1_pow_results, id)[[1]], 
+  s2_pow = tar_read(s2_pow_results, id)[[1]], 
+  id = tar_read(id)[[1]]
+)
+
+# convert complex parameters back to data.frames
+ramp <- conv_data(p_temp$ramp)
+gext <- conv_data(p_temp$gext)
+s1 <- conv_data(p_temp$s1, has_resp = FALSE)
+s1_pow <- conv_data(p_temp$s1_pow, has_resp = FALSE)
+s2_pow <- conv_data(p_temp$s2_pow, has_resp = FALSE)
+s2 <- conv_data(p_temp$s2, has_resp = FALSE)
+
+
+```
+
+```{r}
+#| label: calc-max
+# calc VO2max
+smax <- spiro_max(ramp$resp, "fz")
+```
+
+<!-- ::: {.callout-note title="Hinweis"} -->
+<!-- Da die Berechnungsmethoden der einzelnen Parameter noch nicht alle hundertprozentig festgelegt sind, kann es im Rahmen der finalen Auswertung noch zu geringfügigen Änderungen der hier angegebenen Ergebnisse kommen. -->
+<!-- ::: -->
+
+## Stufentest
+
+```{r}
+#| label: gext-params
+#| message: false
+#| warning: false
+p4 <- calc4(gext$la)
+s <- spiro_summary(gext$resp, exclude = TRUE)
+s <- s[-nrow(s),]
+
+add <- calc4_add(s, p4)
+
+data.frame(
+  p4 = p4,
+  hr4 = add$hr4,
+  vo24 = add$vo24,
+  vo24rel = add$vo24rel,
+  vo2_per = add$vo24 / smax$VO2
+) |>
+  tooltip_names(
+    c("Leistung bei 4mmol/l Laktat", "Herzfrequenz bei 4mmol/l Laktat", "absolute Sauerstoffaufnahme bei 4mmol/l Laktat", "absolute Sauerstoffaufnahme bei 4mmol/l Laktat", "prozentuale Ausschöpfung der VO2max bei 4 mmol/l Laktat"),
+    cols = c("P<sub>4</sub>", "HF<sub>4</sub>", "VO2abs<sub>4</sub>", "VO2rel<sub>4</sub>", "VO2per<sub>4</sub>")) |>
+  kbl(digits = c(0,0,0,1,3), escape = FALSE)
+
+```
+
+::: {.panel-tabset}
+
+## Laktatkurve
+
+```{r}
+#| label: gext-plot
+#| warning: false
+#| fig-align: center
+#| fig-width: 7
+#| fig-height: 5
+s$La <- c(as.numeric(gext$la[c(!is.na(gext$la))][,-1]))
+ggplot(s, aes(x = load, y = La)) +
+  geom_point(colour = "darkred", size = 2) +
+  geom_line(colour = "darkred") +
+  labs(
+    x = "Leistung (W)",
+    y = "Laktatkonzentration (mmol/l)"
+  ) +
+  scale_x_continuous() +
+  theme_bw()
+```
+
+## Tabelle
+
+```{r}
+#| label: gext-table
+#| message: false
+
+s[,c("load", "duration", "La", "HR", "VO2", "VO2_rel", "VE", "RER", "CHO", "FO")] |>
+  tooltip_names(c(NA, NA, "Laktat", "Herzfrequenz", "Sauerstoffaufnahme (abs.)", "Sauerstoffaufnahme (rel.)", "Atemminutenvolumen", "Respiratorischer Quotient", "Kohlenhydratverbrauch", "Fettverbrauch"), cols = c("Leistung", "Dauer", NA, NA, "VO2abs", "VO2rel", rep.int(NA, 4))) |>
+  kbl(digits = 2, escape = FALSE) |>
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+:::
+
+### Drehmoment
+
+![](`r paste0("plots/pow_polar_pp/", id, "-gext.png")`){#pow-gext}
+
+## Rampentest
+
+```{r}
+#| label: ramp-table
+smax |>
+  tooltip_names(
+    c("maximale absolute Sauerstoffaufnahme", "maximale Kohlenstoffdioxidabgabe","maximale Ventilation", "maximale relative Sauerstoffaufnahme", "maximaler respiratorischer Quotient", "maximale Herzfrequenz"),
+    cols = c("VO2<sub>max</sub>abs","VCO2<sub>max</sub>","VE<sub>max</sub>","VO2<sub>max</sub>rel", "RER<sub>max</sub>", "HF<sub>max</sub>")
+  ) |>
+  kbl(escape = FALSE, digits = c(0,0,1,2,2,0)) |>
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+```{r}
+#| label: ramp-plot
+#| fig-align: center
+#| fig-width: 7
+#| fig-height: 5
+spiro_plot(ramp$resp, 3)
+```
+
+### Drehmoment
+
+![](`r paste0("plots/pow_polar_pp/", id, "-ramp.png")`){#pow-ramp}
+
+## Sprinttest
+
+```{r}
+#| label: clamax-plot
+#| fig-align: center
+#| fig-width: 6.5
+#| fig-height: 4
+#| warning: false
+la_long <- pivot_longer(s1$la, cols = -id)
+la_long$name <- factor((la_long$name), levels = unique(la_long$name))
+ggplot(la_long, aes(name, value)) +
+  geom_point(color = "darkred", size = 2) +
+  scale_y_continuous(name = "Laktatkonzentration (mmol/l)", limits = c(0, NA)) +
+  scale_x_discrete(name = "Zeit (min)") +
+  theme_bw()
+```
+
+```{r}
+#| label: spr-table
+clamax <- (max(s1$la, na.rm = TRUE) - s1$la$R) / (15 - 3.409)
+data.frame(
+  clamax = clamax,
+  pmax1 = s1_pow$max,
+  pmax2 = s2_pow$max
+) |>
+  tooltip_names(
+    c("maximale Laktatakkumulationsrate", "maximale Leistung (Sprint 1)", "maximale Leistung (Sprint 2)"),
+    cols = c("cLa<sub>max</sub>", "P<sub>max1</sub>", "P<sub>max2</sub>")
+  ) |>
+  kbl(escape = FALSE) |>
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+```
+
+### EMG
+
+::: {.panel-tabset}
+
+## Sprint 1
+
+![](`r paste0("plots/emg_timecourse/", id, "-s1.png")`){#emg-s1}
+
+## Sprint 2
+
+![](`r paste0("plots/emg_timecourse/", id, "-s2.png")`){#emg-s2}
+
+:::
+
+### Gelenkwinkel
+
+::: {.panel-tabset}
+
+## Sprint 1
+
+![](`r paste0("plots/mc_timecourse/", id, "-s1.png")`){#mc-s1}
+
+## Sprint 2
+
+![](`r paste0("plots/mc_timecourse/", id, "-s2.png")`){#mc-s2}
+
+:::
+
+### Drehmoment
+
+::: {.panel-tabset}
+
+## Sprint 1
+
+![](`r paste0("plots/pow_polar_pp/", id, "-s1.png")`){#pow-s1}
+
+## Sprint 2
+
+![](`r paste0("plots/pow_polar_pp/", id, "-s2.png")`){#pow-s2}
+
+:::
+
+## Constant load tests
+
+### EMG 
+
+::: {.panel-tabset}
+
+## Low-Intensity (50%)
+
+::: {.panel-tabset}
+
+## Plot
+
+::: {layout-ncol=2}
+
+![](`r paste0("plots/emg_timecourse/", id, "-c50.png")`){#emg-c50-tc}
+
+![](`r paste0("plots/emg_polar/", id, "-c50.png")`){#emg-c50-polar}
+
+:::
+
+## Table
+
+```{r}
+#| label: emg-c50-table
+c50_emg_params <- tar_read(c50_emg_params, id)[[1]] # add [[1]] if more than one param
+
+ec <- c50_emg_params[,c( "iemg_mean", "on_mean", "off_mean")]
+ec$iemg_mean <- 100 * ec$iemg_mean
+ecd <- as.data.frame(t(ec), row.names = c("iEMG [%]", "Onset [°]", "Offset [°]"))
+colnames(ecd) <- toupper(c50_emg_params$muscle)
+
+ecd |>
+  tooltip_names(
+    c("biceps brachii", "deltoideus pars clavicularis", "deltoideus pars spinalis", "flexor carpi radialis", "pectoralis major", "rectus abdominis", "triceps brachii", "trapezius")
+  ) |>
+  kbl(escape = FALSE, digits = 0, row.names = TRUE) |>
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+:::
+
+## Medium-Intensity (4 mmol/l)
+
+::: {.panel-tabset}
+
+## Plot
+
+::: {layout-ncol=2}
+
+![](`r paste0("plots/emg_timecourse/", id, "-c4.png")`){#emg-c4-timecourse}
+
+![](`r paste0("plots/emg_polar/", id, "-c4.png")`){#emg-c4-polar}
+
+:::
+
+## Table
+
+```{r}
+#| label: emg-c4-table
+c4_emg_params <- tar_read(c4_emg_params, id)[[1]] # add [[1]] if more than one param
+
+ec <- c4_emg_params[,c( "iemg_mean", "on_mean", "off_mean")]
+ec$iemg_mean <- 100 * ec$iemg_mean
+ecd <- as.data.frame(t(ec), row.names = c("iEMG [%]", "Onset [°]", "Offset [°]"))
+colnames(ecd) <- toupper(c4_emg_params$muscle)
+
+ecd |>
+  tooltip_names(
+    c("biceps brachii", "deltoideus pars clavicularis", "deltoideus pars spinalis", "flexor carpi radialis", "pectoralis major", "rectus abdominis", "triceps brachii", "trapezius")
+  ) |>
+  kbl(escape = FALSE, digits = 0, row.names = TRUE) |>
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+:::
+
+## High-Intensity (tlim)
+
+::: {.panel-tabset}
+
+## Plot
+
+::: {layout-ncol=2}
+
+![](`r paste0("plots/emg_timecourse/", id, "-tlim.png")`){#emg-tlim-timecourse}
+
+![](`r paste0("plots/emg_polar/", id, "-tlim.png")`){#emg-tlim-polar}
+
+:::
+
+## Table
+
+```{r}
+#| label: emg-tlim-table
+tlim_emg_params <- tar_read(tlim_emg_params, id)[[1]] # add [[1]] if more than one param
+
+ec <- tlim_emg_params[,c( "iemg_mean", "on_mean", "off_mean")]
+ec$iemg_mean <- 100 * ec$iemg_mean
+ecd <- as.data.frame(t(ec), row.names = c("iEMG [%]", "Onset [°]", "Offset [°]"))
+colnames(ecd) <- toupper(tlim_emg_params$muscle)
+
+ecd |>
+  tooltip_names(
+    c("biceps brachii", "deltoideus pars clavicularis", "deltoideus pars spinalis", "flexor carpi radialis", "pectoralis major", "rectus abdominis", "triceps brachii", "trapezius")
+  ) |>
+  kbl(escape = FALSE, digits = 0, row.names = TRUE) |>
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+:::
+
+:::
+
+###  Gelenkwinkel
+
+::: {.panel-tabset}
+
+## Plot
+
+![](`r paste0("plots/mc_timecourse/", id, "-comb.png")`){#mc-clt}
+
+## Table
+
+```{r}
+#| label: mc-clt-table
+
+mc_params <- rbind(
+  tar_read(c50_mc_params, id)[[1]],  # add [[1]] if more than one param
+  tar_read(c4_mc_params, id)[[1]],   # add [[1]] if more than one param
+  tar_read(tlim_mc_params, id)[[1]]  # add [[1]] if more than one param
+)
+# angles of interest
+aoi <- c("s_flex", "s_abad", "s_rotx", "e_flex", "w_flex", "w_udrd", "t_flex")
+df <- cbind(data.frame(type = rep(c("Min [°]", "Max [°]", "RoA [°]"), 3)), mc_params[,colnames(mc_params) %in% aoi])
+df |>
+  tooltip_names(
+    c(NA, "shoulder flexion", "shoulder abduction", "shoulder internal rotation", "ellbow flexion", "palmar flexion", "radial duction", "trunk flexion"),
+    cols = c("", "SF<sub>&#952</sub>", "SA<sub>&#952</sub>", "SR<sub>&#952</sub>", "EF<sub>&#952</sub>", "PF<sub>&#952</sub>", "RD<sub>&#952</sub>", "TF<sub>&#952</sub>"
+    )
+  ) |>
+  kbl(escape = FALSE, digits = 1) |>
+  pack_rows(index = c("low" = 3, "medium" = 3, "high" = 3)) |>
+  kable_styling(bootstrap_options = c("striped", "hover"))
+  
+```
+
+:::
+
+### Drehmoment
+
+::: {.panel-tabset}
+
+## Low-Intensity (50%)
+
+![](`r paste0("plots/pow_polar_pp/", id, "-c50.png")`){#pow-c50}
+
+## Medium-Intensity (4 mmol/l)
+
+![](`r paste0("plots/pow_polar_pp/", id, "-c4.png")`){#pow-c4}
+
+## High-Intensity (tlim)
+
+![](`r paste0("plots/pow_polar_pp/", id, "-tlim.png")`){#pow-tlim}
+
+:::
+
