@@ -2,7 +2,7 @@
 # # this script currently works outside of the targets environment
 # 
 # # Combine Push-Pull Data to Plot
-
+# 
 # # source("R/pow_analysis.R")
 # 
 # get_push <- function(id) {
@@ -29,9 +29,11 @@
 # all <- purrr::list_rbind(lapply(1:3, get_push))
 # 
 # all$trial <- factor(all$trial, levels = c("sprint-2", "sprint-1", "tlim", "c50", "c4", "ramp", "gext"))
-# all$id <- factor(all$id, levels = 1:3, labels = c("id = 1", "id = 2", "id = 3"))
+# all$id <- factor(all$id, levels = 1:3, labels = c("P01", "P02", "P03"))
 # 
-# ggplot(all, aes(trial, value + 0.5)) +
+# col <- RColorBrewer::brewer.pal(n = length(unique(all$id)), "Dark2")
+# 
+# ggplot(all, aes(trial, value + 0.5, color = id)) +
 #   geom_point() +
 #   scale_y_continuous(
 #     name = NULL,
@@ -39,10 +41,22 @@
 #     labels = c("\n-20%\nmore pull", "-10%","0%", "10%", "20%\nmore push\n")
 #   ) +
 #   scale_x_discrete(name = NULL, guide = guide_axis(n.dodge = 2)) +
-#   facet_wrap(~id, ncol = 3) +
+#   scale_colour_brewer(palette = "Dark2") +
+#   ggh4x::facet_wrap2(
+#     ~id,
+#     ncol = 3,
+#     strip = ggh4x::strip_themed(
+#       background_x = ggh4x::elem_list_rect(
+#         fill = scales::brewer_pal(palette = "Dark2")(length(unique(all$id)))
+#       ),
+#       text_x = ggh4x::elem_list_text(
+#         colour = "black"
+#       )
+#     )
+#   ) +
 #   theme_bw()
 # 
-# ggsave("plots/comb/pp.png", width = 6, height = 4.5, dpi = 300, bg = "white")
+# ggsave("plots/new/comb/pp_new.png", width = 6, height = 4.5, dpi = 300, bg = "white")
 # 
 # 
 # ## Combines tlim emg plots
@@ -63,8 +77,8 @@
 #   geom_smooth() +
 #   facet_wrap(~muscle, nrow = 2) +
 #   theme_bw() +
-#   scale_y_continuous(name = "iEMG (%)") +
-#   scale_x_continuous(name = "tlim (%)") +
+#   scale_y_continuous(name = "iEMG [%]") +
+#   scale_x_continuous(name = expression(paste(t[lim], " [%]"))) +
 #   scale_colour_brewer(palette = "Dark2") +
 #   theme(
 #     panel.spacing = unit(1, "lines"),
@@ -73,8 +87,8 @@
 #   )
 # 
 # ggsave(
-#   paste0("plots/comb/tlim_emg.png"), 
-#   plot = p_tlimc, 
+#   paste0("plots/new/comb/tlim_emg_new.png"),
+#   plot = p_tlimc,
 #   bg = "white",
 #   width = 6.5,
 #   height = 4.5

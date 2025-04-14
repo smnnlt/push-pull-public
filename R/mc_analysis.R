@@ -186,10 +186,26 @@ plot_mc_clt <- function(mc_c50, mc_c4, mc_tlim, id, type = "pos") {
   mc_filt$type <- factor(mc_filt$type, levels = aoi, labels = aoi_labels)
   mc_filt$trial <- factor(mc_filt$trial, levels = c("c50", "c4", "tlim"), labels = c("low", "medium", "high"))
   
-  p1 <- ggplot(mc_filt, aes(angle, value)) +
+  limits_df <- data.frame(
+    type = levels(mc_filt$type),
+    ymin = c(-50, 0, -5, 40, -50, -35, 100),
+    ymax = c(25, 40, 50, 130, 20, 40, 120)
+  )
+  
+  mc_filt_limited <- merge(mc_filt, limits_df, by = "type")
+  
+  p1 <- ggplot(mc_filt_limited, aes(angle, value)) +
     geom_smooth(aes(color = trial), se = FALSE) +
+    geom_blank(aes(y = ymin)) +
+    geom_blank(aes(y = ymax)) +
     scale_x_continuous(name = expression(paste("Crank Angle ", theta, " [°]")), limits = c(0,360), breaks = seq(0,360,120), expand = c(0,0)) +
-    scale_y_continuous(name = expression(paste(theta, " [°]"))) +
+    scale_y_continuous(
+      name = expression(paste(theta, " [°]")),
+      breaks = function(x) {
+        b <- pretty(x)
+        b[b %% 1 == 0]
+      }
+    ) +
     scale_color_manual(name = NULL, values = c("darkgreen", "orange3", "violetred4")) +
     facet_wrap(~type, nrow = 2, scales = "free_y", labeller = label_parsed) +
     theme_bw() +
@@ -202,7 +218,7 @@ plot_mc_clt <- function(mc_c50, mc_c4, mc_tlim, id, type = "pos") {
     )
   
   ggsave(
-    paste0("plots/mc_timecourse/", id, "-comb.png"),
+    paste0("plots/new/mc_timecourse/", id, "-comb.png"),
     plot = p1,
     bg = "white",
     width = 6,
